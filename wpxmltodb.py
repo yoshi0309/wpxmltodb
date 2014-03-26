@@ -1,5 +1,6 @@
 #!/usr/bin/python
 # encoding: utf-8
+# -*- coding: utf-8 -*-
 
 """
 Copyright (C) 2007 Brazil, Inc. All rights reserved.
@@ -140,105 +141,6 @@ class TextRecorder:
   def search_title(self, query):
     print "Not supported..."
 
-class SennaRecorder:
-  import sennactx
-  db = None
-  client = None
-  use_load = True
-
-  def __init__(self, db, table, host, port, user, password):
-    """ connect senna server and defines classes and slots.
-    """
-    if db:
-      self.db = self.sennactx.Db.open(db)
-      self.client = self.db.ctx_open(self.sennactx.CTX_USEQL)
-    else:
-      if not host:
-        host = 'localhost'
-      if not port:
-        port = 10041
-      self.client = self.sennactx.Context.connect(host, port,
-                                                  self.sennactx.CTX_USEQL)
-    if not self.client:
-      printlog('cannot connect senna server !')
-    if not table:
-      table = 'Articles'
-    self.table = table
-
-  def truncate(self):
-    table = self.table
-    # TODO: drop db if exists
-    # define document class
-    if not self.db:
-      self.db = self.sennactx.Db.create('wikipedia.db', 0, self.sennactx.ENC_UTF8)
-      self.client = self.db.ctx_open(self.sennactx.CTX_USEQL)
-
-    self.command("(<db> ::new '<%s>)" % table)
-    self.command('(<%s> ::add :title <text>)' % table)
-    self.command('(<%s> ::add :body <longtext>)' % table)
-    self.command('(<%s> ::add :mdate <int>)' % table)
-    self.command('(<%s> ::add :size <int>)' % table)
-    # define term class
-    self.command("(<db> ::new '<%s_Terms> :ngram :utf-8)" % table)
-    self.command("(<%s_Terms> ::add :i_title <%s> :index '(title))" % (table, table))
-    self.command("(<%s_Terms> ::add :i_body <%s> :index '(body))" % (table, table))
-    if self.use_load:
-      # load mode
-      self.command('(<%s> ::load :title :body :mdate :size)' % table)
-
-  def __del__(self):
-    self.command('\n')
-    self.client.close()
-    if self.db:
-      self.db.close()
-
-  def command(self, sendbuf, flags = 0):
-    rc = self.client.send(sendbuf.encode('utf-8'), flags)
-    if rc:
-      printlog('senna send error !')
-      return ''
-
-    buf = []
-    for i in xrange(0, 100):
-      (rc, recvbuf, flags) = self.client.recv()
-      if rc:
-        printlog('senna recv error !')
-        return ''
-      if recvbuf:
-        buf.append(recvbuf.decode('utf-8'))
-      if not (flags & self.sennactx.CTX_MORE):
-        return buf
-    printlog('senna recv: too many times !!!')
-
-  def insert(self, id, title, body, mdate, size):
-    """ Insert record to Senna
-    """
-    # FIXME: now senna cannot accept '\n', '\t'
-    body_ = body.replace('\t', ' ').replace('\n', ' ')
-    mepoch = int(time.mktime(time.strptime(mdate, '%Y-%m-%dT%H:%M:%SZ')))
-    if self.use_load:
-      self.command(u'%d\t%s\t%s\t%d\t%d' % (id, title, body_, mepoch, size))
-    else:
-      self.command(u'(<%s> ::new "%s" :title ? :body ? :mtime ? :size ?)' % (self.table, id))
-      self.command(title)
-      self.command(body_)
-      self.command(str(mepoch))
-      self.command(str(size))
-
-  def search(self, slot, query):
-    qstr = "(sen-output ((<%s_Terms> :%s) ::index-select ?) '(:title))" % (self.table, slot)
-    rc = self.command(qstr)
-    res = self.command(query)
-    printlog("Hits : %s" % res.pop(0))
-    for title in res:
-      printlog(title)
-
-  def search_title(self, query):
-    self.search('i_title', query)
-
-  def search_body(self, query):
-    self.search('i_body', query)
-
 class MWXMLHandler(ContentHandler):
   def __init__(self, rec):
     self.count = 0
@@ -292,7 +194,7 @@ class MWXMLHandler(ContentHandler):
       else:
         try:
           (i, out) = self.parse_mediawiki(self.buf, 0, len(self.buf))
-        except:
+        except Exception as e:
           pass
       if i != -1:
         endtime = datetime.now()
@@ -430,10 +332,9 @@ class MWXMLHandler(ContentHandler):
 
   def parse_mediawiki(self, text, i, ts, env = None):
     # * check redirect
-    if text[:9] == '#redirect' or text[:9] == '#REDIRECT':
+    if text[:9] == '#redirect' or text[:9] == '#REDIRECT' or text[:3] == u'#転送':
       # TODO: search with redirect title
       return (-1, 'redirect')
-
     # * parse wiki-formatted text
     out = u''
     mode = {'table': False, 'start': 0}
@@ -713,7 +614,6 @@ options:
   == output mode ==
     -c or --text  : output text to stdout (default)
     -m or --mysql : store to mysql
-    -s or --senna : store to senna with SQTP
   == mode option ==
     -d or --database database-name : database name/file name
     -t or --table table-name       : table name
@@ -725,7 +625,7 @@ options:
 
   try:
     opts, args = getopt.getopt(argv[1:], 'q:b:cmsd:t:h:n:u:p:',
-      longopts=('query=', 'bodyquery=', 'text', 'mysql', 'senna',
+      longopts=('query=', 'bodyquery=', 'text', 'mysql',
                 'database=', 'table=',
                 'host=', 'port=', 'user=', 'password='))
   except getopt.GetoptError:
@@ -742,8 +642,6 @@ options:
       mode = 'text'
     elif opt in ('-m', '--mysql'):
       mode = 'mysql'
-    elif opt in ('-s', '--senna'):
-      mode = 'senna'
     elif opt in ('-d', '--database'):
       database = val
     elif opt in ('-t', '--table'):
@@ -769,8 +667,6 @@ options:
     rec = TextRecorder(database, table, host, port, user, password)
   elif mode == 'mysql':
     rec = MySQLRecorder(database, table, host, port, user, password)
-  elif mode == 'senna':
-    rec = SennaRecorder(database, table, host, port, user, password)
   else:
     printlog('invalid mode !')
 
