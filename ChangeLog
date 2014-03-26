@@ -1,0 +1,6 @@
+2014-03-26  Takumi Yoshida  <yoshida.takumi@gmail.com>
+
+	* wpxmltodb.py : Remove SennaRecorder class.
+	Add #REDIRECT skip condition for Japanese.
+	
+	
