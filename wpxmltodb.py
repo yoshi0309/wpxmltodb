@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# encoding: utf-8
 # -*- coding: utf-8 -*-
 
 """
@@ -123,17 +122,19 @@ class PgRecorder(DBRecorder):
 class TextRecorder:
   def __init__(self, db, table, host, port, user, password):
     # table, host, port, user, password are ignored
+    import codecs
     if db:
-      import codecs
-      self.out = codecs.getwriter('utf-8')(file(db, 'wb'))
+      self.out = codecs.getwriter(codecs.UTF8)(file(db, 'wb'))
     else:
-      self.out = sys.stdout
+      # self.out = sys.stdout
+      self.out = codecs.open('out.csv', 'w', 'utf-8')
 
   def truncate(self):
     pass
 
   def insert(self, id, title, body, mdate, size):
-    self.out.write('%s\t%s\t%s\t%d\n' % (title, body, mdate, size))
+    body = body.replace('"','""')
+    self.out.write('\"%s\",\"%s\",\"%s\",\"%d\"\r\n' % (title, body, mdate, size))
 
   def search_title(self, query):
     print "Not supported..."
@@ -246,14 +247,14 @@ class MWXMLHandler(ContentHandler):
         printlog('* warning: template close is not found !!', True)
         break
       elif text[i:i+2] == '}}':
-        obuf += '\n'
+        obuf += '\r\n'
         i += 2
         break
       elif text[i] == '|':
         obuf += ' '
         i += 1
       else:
-        obuf += '\n'
+        obuf += '\r\n'
         printlog('* error: invalid template end !!')
         i += 1
     return (i, obuf)
@@ -612,7 +613,7 @@ options:
     -q query-string : print titles of articles selected(title)
     -b query-string : print titles of articles selected(body)
   == output mode ==
-    -c or --text  : output text to stdout (default)
+    -c or --text  : output text to csv file (default, out.csv)
     -m or --mysql : store to mysql
   == mode option ==
     -d or --database database-name : database name/file name
@@ -624,7 +625,7 @@ options:
     return 1
 
   try:
-    opts, args = getopt.getopt(argv[1:], 'q:b:cmsd:t:h:n:u:p:',
+    opts, args = getopt.getopt(argv[1:], 'q:b:cmd:t:h:n:u:p:',
       longopts=('query=', 'bodyquery=', 'text', 'mysql',
                 'database=', 'table=',
                 'host=', 'port=', 'user=', 'password='))
@@ -679,6 +680,7 @@ options:
       return usage()
     rec.truncate()
     h = MWXMLHandler(rec)
+    parser = sax.make_parser()
     sax.parse(args[0], h)
 
 if __name__ == '__main__': sys.exit(main(sys.argv))
