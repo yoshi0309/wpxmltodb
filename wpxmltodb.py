@@ -69,6 +69,15 @@ class DBRecorder:
                (title, body[:32], mdate, size))
       printlog(sys.exc_info()[0])
 
+  def start(self):
+    pass
+
+  def end(self):
+    pass
+
+  def processNext(self):
+    pass
+
 class MySQLRecorder(DBRecorder):
   def __init__(self, db, table, host, port, user, password):
     import MySQLdb
@@ -119,7 +128,18 @@ class PgRecorder(DBRecorder):
     # TODO: implement !!
     print "Not supported..."
 
+  def start(self):
+    pass
+
+  def end(self):
+    pass
+
+  def processNext(self):
+    pass
+
 class TextRecorder:
+  file_name = 'out.csv'
+
   def __init__(self, db, table, host, port, user, password):
     # table, host, port, user, password are ignored
     import codecs
@@ -127,20 +147,48 @@ class TextRecorder:
       self.out = codecs.getwriter(codecs.UTF8)(file(db, 'wb'))
     else:
       # self.out = sys.stdout
-      self.out = codecs.open('out.csv', 'w', 'utf-8')
+      self.out = codecs.open(self.file_name, 'w', 'utf-8')
 
   def truncate(self):
     pass
 
   def insert(self, id, title, body, mdate, size):
     body = body.replace('"','""')
-    self.out.write('\"%s\",\"%s\",\"%s\",\"%d\"\r\n' % (title, body, mdate, size))
+    self.out.write('\"%s\",\"%s\",\"%s\",\"%d\"' % (title, body, mdate, size))
 
   def search_title(self, query):
     print "Not supported..."
 
   def search_title(self, query):
     print "Not supported..."
+
+  def start(self):
+    pass
+
+  def end(self):
+    pass
+
+  def processNext(self):
+    self.out.write('\r\n')
+
+class JsonRecorder(TextRecorder):
+  count = 0
+  file_name = 'out.json'
+
+  def insert(self, id, title, body, mdate, size):
+    import json
+    json_data = {'type':'add','id':self.file_name + '_' + str(self.count),'fields':{'title':title,'body':body,'mdate':mdate,'size':size}}
+    json.dump(json_data,self.out,ensure_ascii=False)
+    self.count +=1
+
+  def start(self):
+    self.out.write('[')
+
+  def end(self):
+    self.out.write(']')
+
+  def processNext(self):
+    self.out.write(',\r\n')
 
 class MWXMLHandler(ContentHandler):
   def __init__(self, rec):
@@ -162,14 +210,28 @@ class MWXMLHandler(ContentHandler):
     # internal mode
     self.in_revision = False
 
+    self.notBlank = False
+
+  def startDocument(self):
+    # print('******************************** start!')
+    self.rec.start()
+
+  def endDocument(self):
+    # print('******************************** end!')
+    self.rec.end()
+
   def startElement(self, name, attrs):
     if name == 'namespace':
       self.namespace_key = attrs['key']
     elif name == 'revision':
       self.in_revision = True
     self.buf = ''
+    if self.notBlank == True:
+      self.rec.processNext()
+      self.notBlank = False
 
   def endElement(self, name):
+    self.notBlank = False
     if name == 'text':
       if self.buf == None: return None
       # * check namespace of title
@@ -201,6 +263,7 @@ class MWXMLHandler(ContentHandler):
         endtime = datetime.now()
         printlog('parse time: %s' % (endtime - starttime))
         self.rec.insert(self.id, title, out, self.timestamp, len(out))
+        self.notBlank = True
       else:
         printlog('redirect')
     elif name == 'title':
@@ -614,6 +677,7 @@ options:
     -b query-string : print titles of articles selected(body)
   == output mode ==
     -c or --text  : output text to csv file (default, out.csv)
+    -j or --json
     -m or --mysql : store to mysql
   == mode option ==
     -d or --database database-name : database name/file name
@@ -625,8 +689,8 @@ options:
     return 1
 
   try:
-    opts, args = getopt.getopt(argv[1:], 'q:b:cmd:t:h:n:u:p:',
-      longopts=('query=', 'bodyquery=', 'text', 'mysql',
+    opts, args = getopt.getopt(argv[1:], 'q:b:cjmd:t:h:n:u:p:',
+      longopts=('query=', 'bodyquery=', 'text', 'json', 'mysql',
                 'database=', 'table=',
                 'host=', 'port=', 'user=', 'password='))
   except getopt.GetoptError:
@@ -641,6 +705,8 @@ options:
       bodyquery = val
     if opt in ('-c', '--text'):
       mode = 'text'
+    if opt in ('-j', '--json'):
+      mode = 'json'
     elif opt in ('-m', '--mysql'):
       mode = 'mysql'
     elif opt in ('-d', '--database'):
@@ -666,6 +732,8 @@ options:
   rec = None
   if not mode or mode == 'text':
     rec = TextRecorder(database, table, host, port, user, password)
+  if mode == 'json':
+    rec = JsonRecorder(database, table, host, port, user, password)
   elif mode == 'mysql':
     rec = MySQLRecorder(database, table, host, port, user, password)
   else:
