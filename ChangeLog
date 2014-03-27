@@ -3,4 +3,10 @@
 	* wpxmltodb.py : Remove SennaRecorder class.
 	Add #REDIRECT skip condition for Japanese.
 	
+2014-03-27  Takumi Yoshida  <yoshida.takumi@gmail.com>
+
+	* wpxmltodb.py : Change output data as csv data not tsv for text option.
+	Change -c and --text option to output result to out.csv file, not stdout.
+
+
 	
