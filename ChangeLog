@@ -7,6 +7,6 @@
 
 	* wpxmltodb.py : Change output data as csv data not tsv for text option.
 	Change -c and --text option to output result to out.csv file, not stdout.
-
+	Add JSON mode.
 
 	
